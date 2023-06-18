@@ -1,0 +1,17 @@
+body {
+    background-color: lightblue;
+  }
+  
+  canvas {
+    border: 1px solid black;
+    /* Set the canvas size to be 50px smaller than the window size */
+    width: calc(100vw - 50px);
+    height: calc(100vh - 50px);
+  }
+
+  #timerValue {
+    font-weight: bold;
+  }
+  
+  /* Add any additional styles as needed */
+  
