@@ -6,7 +6,9 @@ Each iteration adds or refines gameplay mechanics, starting from a minimal canva
 
 ## Current state
 
-A basic HTML5 canvas "game" placeholder — a static scene with a character and a platform, no interactivity yet.
+A playable endless runner: a cyclist rides along a parallax countryside road. Jump over rocks, crates and cones; speed ramps up the longer you survive. Score and best score (saved in `localStorage`) are shown in the HUD.
+
+**Controls:** `Space` / `↑` / `W` / tap to jump (and to start or restart).
 
 ## Running locally
 

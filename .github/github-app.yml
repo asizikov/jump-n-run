@@ -1,0 +1,10 @@
+instructions: |
+  Plain HTML5 canvas game with classic <script> tags (no build step, no dependencies).
+  Keep it framework-free; sources live in src/. Script load order in src/index.html matters.
+
+scripts:
+  - name: Run
+    command: python3 -m http.server 8000 --directory src
+
+server_ready_pattern: 'Serving HTTP on .* port (8000)'
+auto_open_in_browser: true

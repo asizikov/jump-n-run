@@ -1,145 +1,188 @@
+// Cyclist drawn in "unit" coordinates: origin at ground contact, +x forward, -y up.
+const GRAVITY = 2600;
+const JUMP_VELOCITY = 950;
+
 class Character extends GameObject {
-  constructor(x, y, width, height) {
-    super(x, y, width, height, 'red');
-    this.frameCount = 0;
+  constructor(game) {
+    super(0, 0, 60, 96);
+    this.game = game;
+    this.lift = 0;      // height above the floor, in px
+    this.vy = 0;
+    this.wheelAngle = 0;
+    this.crashed = false;
+    this.layout();
   }
 
-  move() {
-    this.frameCount++;
+  layout() {
+    this.unit = this.game.unit;
+    this.width = 60 * this.unit;
+    this.height = 96 * this.unit;
+    this.x = this.game.width * 0.2;
+  }
+
+  get onGround() {
+    return this.lift <= 0;
+  }
+
+  reset() {
+    this.lift = 0;
+    this.vy = 0;
+    this.crashed = false;
+  }
+
+  jump() {
+    if (this.onGround && !this.crashed) this.vy = JUMP_VELOCITY * this.unit;
+  }
+
+  update(dt, game) {
+    if (!this.onGround || this.vy > 0) {
+      this.vy -= GRAVITY * this.unit * dt;
+      this.lift += this.vy * dt;
+      if (this.lift <= 0) {
+        this.lift = 0;
+        this.vy = 0;
+      }
+    }
+    this.wheelAngle += (game.speed * dt) / (20 * this.unit);
+    this.y = game.floorY - this.lift - this.height;
+  }
+
+  get bounds() {
+    return { x: this.x + this.width * 0.1, y: this.y + 8 * this.unit, w: this.width * 0.8, h: this.height - 8 * this.unit };
+  }
+
+  // Two-bone IK; `dir` picks which side the joint bends toward.
+  static ik(ax, ay, bx, by, l1, l2, dir) {
+    const dx = bx - ax, dy = by - ay;
+    const d = Math.min(Math.hypot(dx, dy), l1 + l2 - 0.01);
+    const a = (l1 * l1 - l2 * l2 + d * d) / (2 * d);
+    const h = Math.sqrt(Math.max(l1 * l1 - a * a, 0));
+    const ux = dx / (Math.hypot(dx, dy) || 1), uy = dy / (Math.hypot(dx, dy) || 1);
+    return { x: ax + ux * a - uy * h * dir, y: ay + uy * a + ux * h * dir };
   }
 
   render(ctx) {
-    const cx = this.x + this.width / 2;  // horizontal center of the character block
-    const scale = this.width / 80;       // scale factor based on width (designed at 80px wide)
+    const u = this.unit;
+    const cx = this.x + this.width / 2;
+    const floor = this.game.floorY;
 
-    // --- Bike dimensions ---
-    const wheelRadius = 18 * scale;
-    const bikeY = this.y + this.height - wheelRadius; // axle height
-
-    const rearWheelX  = cx - 20 * scale;
-    const frontWheelX = cx + 20 * scale;
-    const frameTopX   = cx - 5 * scale;
-    const frameTopY   = bikeY - 28 * scale;  // seat/handlebar height
-
-    // Rear wheel (red)
-    ctx.strokeStyle = 'red';
-    ctx.lineWidth = 3 * scale;
+    // Ground shadow shrinks as the rider rises
+    const shrink = 1 / (1 + this.lift / (120 * u));
+    ctx.fillStyle = `rgba(0,0,0,${0.25 * shrink})`;
     ctx.beginPath();
-    ctx.arc(rearWheelX, bikeY, wheelRadius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Front wheel (blue)
-    ctx.strokeStyle = 'blue';
-    ctx.beginPath();
-    ctx.arc(frontWheelX, bikeY, wheelRadius, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // Bike frame — triangle: rear axle → seat → front axle
-    ctx.strokeStyle = 'red';
-    ctx.lineWidth = 2.5 * scale;
-    ctx.beginPath();
-    ctx.moveTo(rearWheelX, bikeY);
-    ctx.lineTo(frameTopX, frameTopY);
-    ctx.lineTo(frontWheelX, bikeY);
-    ctx.stroke();
-
-    // Chain stay: rear axle → bottom bracket
-    ctx.beginPath();
-    ctx.moveTo(rearWheelX, bikeY);
-    ctx.lineTo(frameTopX + 4 * scale, frameTopY + 8 * scale);
-    ctx.stroke();
-
-    // Handlebar stem + bar
-    const handlebarX = frontWheelX - 4 * scale;
-    const handlebarY = frameTopY;
-    ctx.beginPath();
-    ctx.moveTo(handlebarX, bikeY - 5 * scale);
-    ctx.lineTo(handlebarX, handlebarY);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(handlebarX - 5 * scale, handlebarY - 3 * scale);
-    ctx.lineTo(handlebarX + 5 * scale, handlebarY + 3 * scale);
-    ctx.stroke();
-
-    // Seat post + seat
-    ctx.beginPath();
-    ctx.moveTo(frameTopX, frameTopY + 8 * scale);
-    ctx.lineTo(frameTopX, frameTopY);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(frameTopX - 7 * scale, frameTopY);
-    ctx.lineTo(frameTopX + 7 * scale, frameTopY);
-    ctx.stroke();
-
-    // --- Rider ---
-    const seatX = frameTopX;
-    const seatY = frameTopY;
-
-    // Pedal animation: legs cycle using frameCount
-    const pedalAngle = (this.frameCount * 0.08) % (Math.PI * 2);
-    const pedalR = 12 * scale;
-    const bbX = frameTopX + 4 * scale;
-    const bbY = frameTopY + 8 * scale; // bottom bracket
-
-    const leftFootX  = bbX + Math.cos(pedalAngle) * pedalR;
-    const leftFootY  = bbY + Math.sin(pedalAngle) * pedalR;
-    const rightFootX = bbX + Math.cos(pedalAngle + Math.PI) * pedalR;
-    const rightFootY = bbY + Math.sin(pedalAngle + Math.PI) * pedalR;
-
-    const hipX = seatX;
-    const hipY = seatY + 2 * scale;
-
-    // Left leg (thigh + shin)
-    const leftKneeX = (hipX + leftFootX) / 2 - 4 * scale;
-    const leftKneeY = (hipY + leftFootY) / 2 + 4 * scale;
-    ctx.strokeStyle = '#3a3a8c';
-    ctx.lineWidth = 3 * scale;
-    ctx.beginPath();
-    ctx.moveTo(hipX, hipY);
-    ctx.lineTo(leftKneeX, leftKneeY);
-    ctx.lineTo(leftFootX, leftFootY);
-    ctx.stroke();
-
-    // Right leg
-    const rightKneeX = (hipX + rightFootX) / 2 + 2 * scale;
-    const rightKneeY = (hipY + rightFootY) / 2 + 2 * scale;
-    ctx.beginPath();
-    ctx.moveTo(hipX, hipY);
-    ctx.lineTo(rightKneeX, rightKneeY);
-    ctx.lineTo(rightFootX, rightFootY);
-    ctx.stroke();
-
-    // Torso (leaning forward)
-    const shoulderX = seatX - 8 * scale;
-    const shoulderY = seatY - 18 * scale;
-    ctx.strokeStyle = '#e07b39';
-    ctx.lineWidth = 4 * scale;
-    ctx.beginPath();
-    ctx.moveTo(hipX, hipY);
-    ctx.lineTo(shoulderX, shoulderY);
-    ctx.stroke();
-
-    // Arms reaching to handlebar
-    ctx.strokeStyle = '#e07b39';
-    ctx.lineWidth = 2.5 * scale;
-    ctx.beginPath();
-    ctx.moveTo(shoulderX, shoulderY);
-    ctx.lineTo(handlebarX, handlebarY);
-    ctx.stroke();
-
-    // Head (helmet)
-    const headX = shoulderX - 2 * scale;
-    const headY = shoulderY - 9 * scale;
-    const headR = 7 * scale;
-    ctx.fillStyle = 'pink';
-    ctx.beginPath();
-    ctx.arc(headX, headY, headR, 0, Math.PI * 2);
+    ctx.ellipse(cx, floor, 44 * u * shrink, 5 * u * shrink, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // Helmet
-    ctx.fillStyle = '#cc0000';
+    ctx.save();
+    ctx.translate(cx, floor - this.lift);
+    ctx.scale(u, u);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    if (this.crashed) {
+      ctx.rotate(-0.25);
+    } else {
+      // Tilt: nose up while rising, down while falling
+      ctx.rotate(Math.max(-0.25, Math.min(0.25, -this.vy / 4000)));
+    }
+
+    const rear = { x: -30, y: -20 }, front = { x: 30, y: -20 };
+    const bb = { x: -2, y: -22 };
+    const seat = { x: -11, y: -58 };
+    const head = { x: 22, y: -58 };
+
+    this._wheel(ctx, rear.x, rear.y);
+    this._wheel(ctx, front.x, front.y);
+
+    // Frame
+    ctx.strokeStyle = '#ff5a36';
+    ctx.lineWidth = 4;
     ctx.beginPath();
-    ctx.ellipse(headX, headY - headR * 0.3, headR * 1.1, headR * 0.7, -0.2, Math.PI, 0);
-    ctx.fill();
+    ctx.moveTo(rear.x, rear.y); ctx.lineTo(bb.x, bb.y); ctx.lineTo(head.x, head.y);
+    ctx.lineTo(seat.x, seat.y); ctx.lineTo(rear.x, rear.y);
+    ctx.moveTo(bb.x, bb.y); ctx.lineTo(seat.x, seat.y);
+    ctx.moveTo(head.x, head.y); ctx.lineTo(front.x, front.y);
+    ctx.stroke();
+
+    // Saddle and handlebar
+    ctx.strokeStyle = '#1b1b24';
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(seat.x - 8, seat.y - 4); ctx.lineTo(seat.x + 6, seat.y - 4);
+    ctx.moveTo(head.x, head.y); ctx.lineTo(head.x - 2, head.y - 8); ctx.lineTo(head.x + 8, head.y - 8);
+    ctx.stroke();
+
+    // Rider
+    const hip = { x: seat.x + 1, y: seat.y - 8 };
+    const shoulder = { x: hip.x + 20, y: hip.y - 34 };
+    const hand = { x: head.x + 7, y: head.y - 8 };
+    const crank = this.wheelAngle * 0.8;
+
+    const legs = [crank, crank + Math.PI].map((a) => {
+      const foot = { x: bb.x + Math.cos(a) * 10, y: bb.y + Math.sin(a) * 10 };
+      return { foot, knee: Character.ik(hip.x, hip.y, foot.x, foot.y, 28, 30, -1) };
+    });
+
+    // Far leg first so the near leg overlaps it
+    const draw = (leg, color) => {
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(hip.x, hip.y); ctx.lineTo(leg.knee.x, leg.knee.y); ctx.lineTo(leg.foot.x, leg.foot.y);
+      ctx.stroke();
+      ctx.strokeStyle = '#1b1b24';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(leg.foot.x - 4, leg.foot.y + 1); ctx.lineTo(leg.foot.x + 5, leg.foot.y + 1);
+      ctx.stroke();
+    };
+    draw(legs[1], '#1f3a6b');
+
+    // Torso
+    ctx.strokeStyle = '#ffd23f';
+    ctx.lineWidth = 12;
+    ctx.beginPath();
+    ctx.moveTo(hip.x, hip.y); ctx.lineTo(shoulder.x, shoulder.y);
+    ctx.stroke();
+
+    // Arm
+    const elbow = Character.ik(shoulder.x, shoulder.y, hand.x, hand.y, 20, 20, 1);
+    ctx.strokeStyle = '#f2b38c';
+    ctx.lineWidth = 6;
+    ctx.beginPath();
+    ctx.moveTo(shoulder.x, shoulder.y); ctx.lineTo(elbow.x, elbow.y); ctx.lineTo(hand.x, hand.y);
+    ctx.stroke();
+
+    draw(legs[0], '#2c4f8f');
+
+    // Head + helmet
+    const hx = shoulder.x + 6, hy = shoulder.y - 12;
+    ctx.fillStyle = '#f2b38c';
+    ctx.beginPath(); ctx.arc(hx, hy, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#e8242b';
+    ctx.beginPath(); ctx.arc(hx - 1, hy - 1, 9.5, Math.PI * 1.02, Math.PI * 2.05); ctx.fill();
+    ctx.fillStyle = '#1b1b24';
+    ctx.beginPath(); ctx.arc(hx + 4, hy, 1.4, 0, Math.PI * 2); ctx.fill();
+
+    ctx.restore();
+  }
+
+  _wheel(ctx, x, y) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.strokeStyle = '#1b1b24';
+    ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.stroke();
+    ctx.strokeStyle = '#9aa4b2';
+    ctx.lineWidth = 1;
+    ctx.rotate(this.wheelAngle);
+    ctx.beginPath();
+    for (let i = 0; i < 6; i++) {
+      const a = (i * Math.PI) / 3;
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * 17, Math.sin(a) * 17);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 }
